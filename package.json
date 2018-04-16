@@ -1,6 +1,6 @@
 {
-  "name": "flickity",
-  "version": "2.1.1",
+  "name": "@pageboard/flickity",
+  "version": "2.1.1-1",
   "description": "Touch, responsive, flickable carousels",
   "main": "js/index.js",
   "style": "css/flickity.css",
@@ -33,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/metafizzy/flickity.git"
+    "url": "git://github.com/pageboard/flickity.git#pageboard"
   },
   "keywords": [
     "touch",
@@ -48,7 +48,7 @@
   "author": "Metafizzy",
   "license": "GPL-3.0",
   "bugs": {
-    "url": "https://github.com/metafizzy/flickity/issues"
+    "url": "https://github.com/pageboard/flickity/issues"
   },
   "homepage": "https://flickity.metafizzy.co",
   "directories": {
