@@ -531,7 +531,7 @@ return getSize;
 }));
 
 /**
- * Fizzy UI utils v2.0.7
+ * Fizzy UI utils v2.0.5
  * MIT license
  */
 
@@ -586,27 +586,23 @@ utils.modulo = function( num, div ) {
 
 // ----- makeArray ----- //
 
-var arraySlice = Array.prototype.slice;
-
 // turn element or nodeList into an array
 utils.makeArray = function( obj ) {
+  var ary = [];
   if ( Array.isArray( obj ) ) {
     // use object if already an array
-    return obj;
-  }
-  // return empty array if undefined or null. #6
-  if ( obj === null || obj === undefined ) {
-    return [];
-  }
-
-  var isArrayLike = typeof obj == 'object' && typeof obj.length == 'number';
-  if ( isArrayLike ) {
+    ary = obj;
+  } else if ( obj && typeof obj == 'object' &&
+    typeof obj.length == 'number' ) {
     // convert nodeList to array
-    return arraySlice.call( obj );
+    for ( var i=0; i < obj.length; i++ ) {
+      ary.push( obj[i] );
+    }
+  } else {
+    // array of single index
+    ary.push( obj );
   }
-
-  // array of single index
-  return [ obj ];
+  return ary;
 };
 
 // ----- removeFrom ----- //
@@ -685,21 +681,22 @@ utils.filterFindElements = function( elems, selector ) {
 // ----- debounceMethod ----- //
 
 utils.debounceMethod = function( _class, methodName, threshold ) {
-  threshold = threshold || 100;
   // original method
   var method = _class.prototype[ methodName ];
   var timeoutName = methodName + 'Timeout';
 
   _class.prototype[ methodName ] = function() {
     var timeout = this[ timeoutName ];
-    clearTimeout( timeout );
-
+    if ( timeout ) {
+      clearTimeout( timeout );
+    }
     var args = arguments;
+
     var _this = this;
     this[ timeoutName ] = setTimeout( function() {
       method.apply( _this, args );
       delete _this[ timeoutName ];
-    }, threshold );
+    }, threshold || 100 );
   };
 };
 
@@ -1271,9 +1268,13 @@ proto._create = function() {
   this.x = 0;
   this.velocity = 0;
   this.originSide = this.options.rightToLeft ? 'right' : 'left';
-  // create viewport & slider
-  this.viewport = document.createElement('div');
-  this.viewport.className = 'flickity-viewport';
+  
+  this.viewport = this.element.querySelector('.flickity-viewport');
+  if (!this.viewport) {
+    // create viewport & slider
+    this.viewport = document.createElement('div');
+    this.viewport.className = 'flickity-viewport';
+  }
   this._createSlider();
 
   if ( this.options.resize || this.options.watchCSS ) {
@@ -1317,11 +1318,13 @@ proto.activate = function() {
   }
 
   this.getSize();
-  // move initial cell elements so they can be loaded as cells
-  var cellElems = this._filterFindCellElements( this.element.children );
-  moveElements( cellElems, this.slider );
-  this.viewport.appendChild( this.slider );
-  this.element.appendChild( this.viewport );
+  if (!this.slider.childElementCount) {
+    // move initial cell elements so they can be loaded as cells
+    var cellElems = this._filterFindCellElements( this.element.children );
+    moveElements( cellElems, this.slider );
+    this.viewport.appendChild( this.slider );
+    this.element.appendChild( this.viewport );
+  }
   // get cells from children
   this.reloadCells();
 
@@ -1354,8 +1357,11 @@ proto.activate = function() {
 // slider positions the cells
 proto._createSlider = function() {
   // slider element does all the positioning
-  var slider = document.createElement('div');
-  slider.className = 'flickity-slider';
+  var slider = this.viewport.querySelector('.flickity-slider');
+  if (!slider) {
+    slider = document.createElement('div');
+    slider.className = 'flickity-slider';
+  }
   slider.style[ this.originSide ] = 0;
   this.slider = slider;
 };
@@ -2043,7 +2049,7 @@ return Flickity;
 }));
 
 /*!
- * Unipointer v2.3.0
+ * Unipointer v2.2.0
  * base class for doing one thing with pointer event
  * MIT license
  */
@@ -2094,24 +2100,22 @@ proto.unbindStartEvent = function( elem ) {
 };
 
 /**
- * Add or remove start event
- * @param {Boolean} isAdd - remove if falsey
+ * works as unbinder, as you can ._bindStart( false ) to unbind
+ * @param {Boolean} isBind - will unbind if falsey
  */
-proto._bindStartEvent = function( elem, isAdd ) {
-  // munge isAdd, default to true
-  isAdd = isAdd === undefined ? true : isAdd;
-  var bindMethod = isAdd ? 'addEventListener' : 'removeEventListener';
+proto._bindStartEvent = function( elem, isBind ) {
+  // munge isBind, default to true
+  isBind = isBind === undefined ? true : !!isBind;
+  var bindMethod = isBind ? 'addEventListener' : 'removeEventListener';
 
-  // default to mouse events
-  var startEvent = 'mousedown';
   if ( window.PointerEvent ) {
-    // Pointer Events
-    startEvent = 'pointerdown';
-  } else if ( 'ontouchstart' in window ) {
-    // Touch Events. iOS Safari
-    startEvent = 'touchstart';
+    // Pointer Events. Chrome 55, IE11, Edge 14
+    elem[ bindMethod ]( 'pointerdown', this );
+  } else {
+    // listen for both, for devices like Chrome Pixel
+    elem[ bindMethod ]( 'mousedown', this );
+    elem[ bindMethod ]( 'touchstart', this );
   }
-  elem[ bindMethod ]( startEvent, this );
 };
 
 // trigger handler methods for events
@@ -2157,9 +2161,8 @@ proto.onpointerdown = function( event ) {
  * @param {Event or Touch} pointer
  */
 proto._pointerDown = function( event, pointer ) {
-  // dismiss right click and other pointers
-  // button = 0 is okay, 1-4 not
-  if ( event.button || this.isPointerDown ) {
+  // dismiss other pointers
+  if ( this.isPointerDown ) {
     return;
   }
 
@@ -2284,15 +2287,12 @@ proto.pointerUp = function( event, pointer ) {
 
 // triggered on pointer up & pointer cancel
 proto._pointerDone = function() {
-  this._pointerReset();
-  this._unbindPostStartEvents();
-  this.pointerDone();
-};
-
-proto._pointerReset = function() {
   // reset properties
   this.isPointerDown = false;
   delete this.pointerIdentifier;
+  // remove events
+  this._unbindPostStartEvents();
+  this.pointerDone();
 };
 
 proto.pointerDone = noop;
@@ -2345,7 +2345,7 @@ return Unipointer;
 }));
 
 /*!
- * Unidragger v2.3.0
+ * Unidragger v2.2.3
  * Draggable base class
  * MIT license
  */
@@ -2399,22 +2399,22 @@ proto.unbindHandles = function() {
 };
 
 /**
- * Add or remove start event
- * @param {Boolean} isAdd
+ * works as unbinder, as you can .bindHandles( false ) to unbind
+ * @param {Boolean} isBind - will unbind if falsey
  */
-proto._bindHandles = function( isAdd ) {
-  // munge isAdd, default to true
-  isAdd = isAdd === undefined ? true : isAdd;
+proto._bindHandles = function( isBind ) {
+  // munge isBind, default to true
+  isBind = isBind === undefined ? true : !!isBind;
   // bind each handle
-  var bindMethod = isAdd ? 'addEventListener' : 'removeEventListener';
-  var touchAction = isAdd ? this._touchActionValue : '';
+  var bindMethod = isBind ? 'addEventListener' : 'removeEventListener';
   for ( var i=0; i < this.handles.length; i++ ) {
     var handle = this.handles[i];
-    this._bindStartEvent( handle, isAdd );
+    this._bindStartEvent( handle, isBind );
     handle[ bindMethod ]( 'click', this );
-    // touch-action: none to override browser touch gestures. metafizzy/flickity#540
+    // touch-action: none to override browser touch gestures
+    // metafizzy/flickity#540
     if ( window.PointerEvent ) {
-      handle.style.touchAction = touchAction;
+      handle.style.touchAction = isBind ? this._touchActionValue : '';
     }
   }
 };
@@ -2430,57 +2430,40 @@ proto._touchActionValue = 'none';
  * @param {Event or Touch} pointer
  */
 proto.pointerDown = function( event, pointer ) {
-  var isOkay = this.okayPointerDown( event );
-  if ( !isOkay ) {
+  // dismiss range sliders
+  if ( event.target.nodeName == 'INPUT' && event.target.type == 'range' ) {
+    // reset pointerDown logic
+    this.isPointerDown = false;
+    delete this.pointerIdentifier;
     return;
   }
-  // track start event position
-  this.pointerDownPointer = pointer;
 
-  event.preventDefault();
-  this.pointerDownBlur();
+  this._dragPointerDown( event, pointer );
+  // kludge to blur focused inputs in dragger
+  var focused = document.activeElement;
+  if ( focused && focused.blur ) {
+    focused.blur();
+  }
   // bind move and end events
   this._bindPostStartEvents( event );
   this.emitEvent( 'pointerDown', [ event, pointer ] );
 };
 
-// nodes that have text fields
-var cursorNodes = {
-  TEXTAREA: true,
-  INPUT: true,
-  SELECT: true,
-  OPTION: true,
-};
+// base pointer down logic
+proto._dragPointerDown = function( event, pointer ) {
+  // track to see when dragging starts
+  this.pointerDownPoint = Unipointer.getPointerPoint( pointer );
 
-// input types that do not have text fields
-var clickTypes = {
-  radio: true,
-  checkbox: true,
-  button: true,
-  submit: true,
-  image: true,
-  file: true,
-};
-
-// dismiss inputs with text fields. flickity#403, flickity#404
-proto.okayPointerDown = function( event ) {
-  var isCursorNode = cursorNodes[ event.target.nodeName ];
-  var isClickType = clickTypes[ event.target.type ];
-  var isOkay = !isCursorNode || isClickType;
-  if ( !isOkay ) {
-    this._pointerReset();
+  var canPreventDefault = this.canPreventDefaultOnPointerDown( event, pointer );
+  if ( canPreventDefault ) {
+    event.preventDefault();
   }
-  return isOkay;
 };
 
-// kludge to blur previously focused input
-proto.pointerDownBlur = function() {
-  var focused = document.activeElement;
-  // do not blur body for IE10, metafizzy/flickity#117
-  var canBlur = focused && focused.blur && focused != document.body;
-  if ( canBlur ) {
-    focused.blur();
-  }
+// overwriteable method so Flickity can prevent for scrolling
+proto.canPreventDefaultOnPointerDown = function( event ) {
+  // prevent default, unless touchstart or <select>
+  return event.target.nodeName != 'SELECT';
 };
 
 // ----- move event ----- //
@@ -2498,9 +2481,10 @@ proto.pointerMove = function( event, pointer ) {
 
 // base pointer move logic
 proto._dragPointerMove = function( event, pointer ) {
+  var movePoint = Unipointer.getPointerPoint( pointer );
   var moveVector = {
-    x: pointer.pageX - this.pointerDownPointer.pageX,
-    y: pointer.pageY - this.pointerDownPointer.pageY
+    x: movePoint.x - this.pointerDownPoint.x,
+    y: movePoint.y - this.pointerDownPoint.y
   };
   // start drag if pointer has moved far enough to start drag
   if ( !this.isDragging && this.hasDragStarted( moveVector ) ) {
@@ -2513,6 +2497,7 @@ proto._dragPointerMove = function( event, pointer ) {
 proto.hasDragStarted = function( moveVector ) {
   return Math.abs( moveVector.x ) > 3 || Math.abs( moveVector.y ) > 3;
 };
+
 
 // ----- end event ----- //
 
@@ -2540,8 +2525,10 @@ proto._dragPointerUp = function( event, pointer ) {
 // dragStart
 proto._dragStart = function( event, pointer ) {
   this.isDragging = true;
+  this.dragStartPoint = Unipointer.getPointerPoint( pointer );
   // prevent clicks
   this.isPreventingClicks = true;
+
   this.dragStart( event, pointer );
 };
 
@@ -2598,6 +2585,11 @@ proto._staticClick = function( event, pointer ) {
     return;
   }
 
+  // allow click in <input>s and <textarea>s
+  var nodeName = event.target.nodeName;
+  if ( nodeName == 'INPUT' || nodeName == 'TEXTAREA' ) {
+    event.target.focus();
+  }
   this.staticClick( event, pointer );
 
   // set flag for emulated clicks 300ms after touchend
@@ -2685,7 +2677,7 @@ proto._createDrag = function() {
   this.on( 'activate', this.onActivateDrag );
   this.on( 'uiChange', this._uiChangeDrag );
   this.on( 'childUIPointerDown', this._childUIPointerDownDrag );
-  this.on( 'deactivate', this.unbindDrag );
+  this.on( 'deactivate', this.onDeactivateDrag );
   this.on( 'cellChange', this.updateDraggable );
   // TODO updateDraggable on resize? if groupCells & slides change
   // HACK - add seemingly innocuous handler to fix iOS 10 scroll behavior
@@ -4227,7 +4219,7 @@ return Flickity;
 }));
 
 /*!
- * imagesLoaded v4.1.4
+ * imagesLoaded v4.1.3
  * JavaScript is all like "You images are done yet or what?"
  * MIT License
  */
@@ -4279,23 +4271,22 @@ function extend( a, b ) {
   return a;
 }
 
-var arraySlice = Array.prototype.slice;
-
 // turn element or nodeList into an array
 function makeArray( obj ) {
+  var ary = [];
   if ( Array.isArray( obj ) ) {
     // use object if already an array
-    return obj;
-  }
-
-  var isArrayLike = typeof obj == 'object' && typeof obj.length == 'number';
-  if ( isArrayLike ) {
+    ary = obj;
+  } else if ( typeof obj.length == 'number' ) {
     // convert nodeList to array
-    return arraySlice.call( obj );
+    for ( var i=0; i < obj.length; i++ ) {
+      ary.push( obj[i] );
+    }
+  } else {
+    // array of single index
+    ary.push( obj );
   }
-
-  // array of single index
-  return [ obj ];
+  return ary;
 }
 
 // -------------------------- imagesLoaded -------------------------- //
@@ -4311,19 +4302,13 @@ function ImagesLoaded( elem, options, onAlways ) {
     return new ImagesLoaded( elem, options, onAlways );
   }
   // use elem as selector string
-  var queryElem = elem;
   if ( typeof elem == 'string' ) {
-    queryElem = document.querySelectorAll( elem );
-  }
-  // bail if bad element
-  if ( !queryElem ) {
-    console.error( 'Bad element for imagesLoaded ' + ( queryElem || elem ) );
-    return;
+    elem = document.querySelectorAll( elem );
   }
 
-  this.elements = makeArray( queryElem );
+  this.elements = makeArray( elem );
   this.options = extend( {}, this.options );
-  // shift arguments if no options set
+
   if ( typeof options == 'function' ) {
     onAlways = options;
   } else {
@@ -4342,7 +4327,9 @@ function ImagesLoaded( elem, options, onAlways ) {
   }
 
   // HACK check async to allow time to bind listeners
-  setTimeout( this.check.bind( this ) );
+  setTimeout( function() {
+    this.check();
+  }.bind( this ));
 }
 
 ImagesLoaded.prototype = Object.create( EvEmitter.prototype );
@@ -4510,9 +4497,7 @@ LoadingImage.prototype.check = function() {
 };
 
 LoadingImage.prototype.getIsImageComplete = function() {
-  // check for non-zero, non-undefined naturalWidth
-  // fixes Safari+InfiniteScroll+Masonry bug infinite-scroll#671
-  return this.img.complete && this.img.naturalWidth;
+  return this.img.complete && this.img.naturalWidth !== undefined;
 };
 
 LoadingImage.prototype.confirm = function( isLoaded, message ) {
