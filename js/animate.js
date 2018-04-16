@@ -74,9 +74,14 @@ proto.positionSlider = function() {
   x = this.options.rightToLeft ? -x : x;
   var value = this.getPositionValue( x );
   // use 3D tranforms for hardware acceleration on iOS
-  // but use 2D when settled, for better font-rendering
-  this.slider.style.transform = this.isAnimating ?
-    'translate3d(' + value + ',0,0)' : 'translateX(' + value + ')';
+  // but use left absolute position when settled, for better font-rendering and positioning
+  if (this.isAnimating) {
+    this.slider.style.transform = 'translate3d(' + value + ',0,0)';
+    this.slider.style.left = "0px";
+  } else {
+    this.slider.style.transform = '';
+    this.slider.style.left = value;
+  }
 
   // scroll event
   var firstSlide = this.slides[0];
