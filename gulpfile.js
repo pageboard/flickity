@@ -67,10 +67,8 @@ gulp.task( 'requirejs', function() {
       baseUrl: 'bower_components',
       optimize: 'none',
       include: [
-        'jquery-bridget/jquery-bridget',
         'flickity/js/index',
-        'flickity-as-nav-for/as-nav-for',
-        'flickity-imagesloaded/flickity-imagesloaded'
+        'flickity-as-nav-for/as-nav-for'
       ],
       paths: {
         flickity: '../',
