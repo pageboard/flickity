@@ -10,150 +10,6 @@
  */
 
 /**
- * Bridget makes jQuery widgets
- * v2.0.1
- * MIT license
- */
-
-/* jshint browser: true, strict: true, undef: true, unused: true */
-
-( function( window, factory ) {
-  // universal module definition
-  /*jshint strict: false */ /* globals define, module, require */
-  if ( typeof define == 'function' && define.amd ) {
-    // AMD
-    define( 'jquery-bridget/jquery-bridget',[ 'jquery' ], function( jQuery ) {
-      return factory( window, jQuery );
-    });
-  } else if ( typeof module == 'object' && module.exports ) {
-    // CommonJS
-    module.exports = factory(
-      window,
-      require('jquery')
-    );
-  } else {
-    // browser global
-    window.jQueryBridget = factory(
-      window,
-      window.jQuery
-    );
-  }
-
-}( window, function factory( window, jQuery ) {
-'use strict';
-
-// ----- utils ----- //
-
-var arraySlice = Array.prototype.slice;
-
-// helper function for logging errors
-// $.error breaks jQuery chaining
-var console = window.console;
-var logError = typeof console == 'undefined' ? function() {} :
-  function( message ) {
-    console.error( message );
-  };
-
-// ----- jQueryBridget ----- //
-
-function jQueryBridget( namespace, PluginClass, $ ) {
-  $ = $ || jQuery || window.jQuery;
-  if ( !$ ) {
-    return;
-  }
-
-  // add option method -> $().plugin('option', {...})
-  if ( !PluginClass.prototype.option ) {
-    // option setter
-    PluginClass.prototype.option = function( opts ) {
-      // bail out if not an object
-      if ( !$.isPlainObject( opts ) ){
-        return;
-      }
-      this.options = $.extend( true, this.options, opts );
-    };
-  }
-
-  // make jQuery plugin
-  $.fn[ namespace ] = function( arg0 /*, arg1 */ ) {
-    if ( typeof arg0 == 'string' ) {
-      // method call $().plugin( 'methodName', { options } )
-      // shift arguments by 1
-      var args = arraySlice.call( arguments, 1 );
-      return methodCall( this, arg0, args );
-    }
-    // just $().plugin({ options })
-    plainCall( this, arg0 );
-    return this;
-  };
-
-  // $().plugin('methodName')
-  function methodCall( $elems, methodName, args ) {
-    var returnValue;
-    var pluginMethodStr = '$().' + namespace + '("' + methodName + '")';
-
-    $elems.each( function( i, elem ) {
-      // get instance
-      var instance = $.data( elem, namespace );
-      if ( !instance ) {
-        logError( namespace + ' not initialized. Cannot call methods, i.e. ' +
-          pluginMethodStr );
-        return;
-      }
-
-      var method = instance[ methodName ];
-      if ( !method || methodName.charAt(0) == '_' ) {
-        logError( pluginMethodStr + ' is not a valid method' );
-        return;
-      }
-
-      // apply method, get return value
-      var value = method.apply( instance, args );
-      // set return value if value is returned, use only first value
-      returnValue = returnValue === undefined ? value : returnValue;
-    });
-
-    return returnValue !== undefined ? returnValue : $elems;
-  }
-
-  function plainCall( $elems, options ) {
-    $elems.each( function( i, elem ) {
-      var instance = $.data( elem, namespace );
-      if ( instance ) {
-        // set options & init
-        instance.option( options );
-        instance._init();
-      } else {
-        // initialize new instance
-        instance = new PluginClass( elem, options );
-        $.data( elem, namespace, instance );
-      }
-    });
-  }
-
-  updateJQuery( $ );
-
-}
-
-// ----- updateJQuery ----- //
-
-// set $.bridget for v1 backwards compatibility
-function updateJQuery( $ ) {
-  if ( !$ || ( $ && $.bridget ) ) {
-    return;
-  }
-  $.bridget = jQueryBridget;
-}
-
-updateJQuery( jQuery || window.jQuery );
-
-// -----  ----- //
-
-return jQueryBridget;
-
-}));
-
-/**
  * EvEmitter v1.1.0
  * Lil' event emitter
  * MIT License
@@ -1259,7 +1115,8 @@ Flickity.defaults = {
   selectedAttraction: 0.025,
   setGallerySize: true
   // watchCSS: false,
-  // wrapAround: false
+  // wrapAround: false,
+  // noDomMod: false
 };
 
 // hash of methods triggered on _create()
@@ -1283,8 +1140,16 @@ proto._create = function() {
   this.velocity = 0;
   this.originSide = this.options.rightToLeft ? 'right' : 'left';
   // create viewport & slider
-  this.viewport = document.createElement('div');
-  this.viewport.className = 'flickity-viewport';
+  if (this.options.noDomMod) {
+    this.viewport = this.element.querySelector('.flickity-viewport');
+    if ( !this.viewport && console ) {
+      console.error( 'Could not find ".flickity-viewport"' );
+      return;
+    }
+  } else {
+    this.viewport = document.createElement('div');
+    this.viewport.className = 'flickity-viewport';
+  }
   this._createSlider();
 
   if ( this.options.resize || this.options.watchCSS ) {
@@ -1330,9 +1195,11 @@ proto.activate = function() {
   this.getSize();
   // move initial cell elements so they can be loaded as cells
   var cellElems = this._filterFindCellElements( this.element.children );
-  moveElements( cellElems, this.slider );
-  this.viewport.appendChild( this.slider );
-  this.element.appendChild( this.viewport );
+  if (! this.options.noDomMod) {
+    moveElements( cellElems, this.slider );
+    this.viewport.appendChild( this.slider );
+    this.element.appendChild( this.viewport );
+  }
   // get cells from children
   this.reloadCells();
 
@@ -1354,10 +1221,17 @@ proto.activate = function() {
 // slider positions the cells
 proto._createSlider = function() {
   // slider element does all the positioning
-  var slider = document.createElement('div');
-  slider.className = 'flickity-slider';
-  slider.style[ this.originSide ] = 0;
-  this.slider = slider;
+  if (this.options.noDomMod) {
+    this.slider = this.element.querySelector('.flickity-slider');
+    if ( !this.slider && console ) {
+      console.error( 'Could not find ".flickity-slider"' );
+      return;
+    }
+  } else {
+    this.slider = document.createElement('div');
+    this.slider.className = 'flickity-slider';
+  }
+  this.slider.style[ this.originSide ] = 0;
 };
 
 proto._filterFindCellElements = function( elems ) {
@@ -2021,9 +1895,9 @@ proto.deactivate = function() {
   this.cells.forEach( function( cell ) {
     cell.destroy();
   });
-  this.element.removeChild( this.viewport );
+  if (! this.options.noDomMod ) this.element.removeChild( this.viewport );
   // move child elements back into element
-  moveElements( this.slider.children, this.element );
+  if (! this.options.noDomMod ) moveElements( this.slider.children, this.element );
   if ( this.options.accessibility ) {
     this.element.removeAttribute('tabIndex');
     this.element.removeEventListener( 'keydown', this );
@@ -4137,448 +4011,6 @@ proto.destroyAsNavFor = function() {
 };
 
 // -----  ----- //
-
-return Flickity;
-
-}));
-
-/*!
- * imagesLoaded v4.1.4
- * JavaScript is all like "You images are done yet or what?"
- * MIT License
- */
-
-( function( window, factory ) { 'use strict';
-  // universal module definition
-
-  /*global define: false, module: false, require: false */
-
-  if ( typeof define == 'function' && define.amd ) {
-    // AMD
-    define( 'imagesloaded/imagesloaded',[
-      'ev-emitter/ev-emitter'
-    ], function( EvEmitter ) {
-      return factory( window, EvEmitter );
-    });
-  } else if ( typeof module == 'object' && module.exports ) {
-    // CommonJS
-    module.exports = factory(
-      window,
-      require('ev-emitter')
-    );
-  } else {
-    // browser global
-    window.imagesLoaded = factory(
-      window,
-      window.EvEmitter
-    );
-  }
-
-})( typeof window !== 'undefined' ? window : this,
-
-// --------------------------  factory -------------------------- //
-
-function factory( window, EvEmitter ) {
-
-
-
-var $ = window.jQuery;
-var console = window.console;
-
-// -------------------------- helpers -------------------------- //
-
-// extend objects
-function extend( a, b ) {
-  for ( var prop in b ) {
-    a[ prop ] = b[ prop ];
-  }
-  return a;
-}
-
-var arraySlice = Array.prototype.slice;
-
-// turn element or nodeList into an array
-function makeArray( obj ) {
-  if ( Array.isArray( obj ) ) {
-    // use object if already an array
-    return obj;
-  }
-
-  var isArrayLike = typeof obj == 'object' && typeof obj.length == 'number';
-  if ( isArrayLike ) {
-    // convert nodeList to array
-    return arraySlice.call( obj );
-  }
-
-  // array of single index
-  return [ obj ];
-}
-
-// -------------------------- imagesLoaded -------------------------- //
-
-/**
- * @param {Array, Element, NodeList, String} elem
- * @param {Object or Function} options - if function, use as callback
- * @param {Function} onAlways - callback function
- */
-function ImagesLoaded( elem, options, onAlways ) {
-  // coerce ImagesLoaded() without new, to be new ImagesLoaded()
-  if ( !( this instanceof ImagesLoaded ) ) {
-    return new ImagesLoaded( elem, options, onAlways );
-  }
-  // use elem as selector string
-  var queryElem = elem;
-  if ( typeof elem == 'string' ) {
-    queryElem = document.querySelectorAll( elem );
-  }
-  // bail if bad element
-  if ( !queryElem ) {
-    console.error( 'Bad element for imagesLoaded ' + ( queryElem || elem ) );
-    return;
-  }
-
-  this.elements = makeArray( queryElem );
-  this.options = extend( {}, this.options );
-  // shift arguments if no options set
-  if ( typeof options == 'function' ) {
-    onAlways = options;
-  } else {
-    extend( this.options, options );
-  }
-
-  if ( onAlways ) {
-    this.on( 'always', onAlways );
-  }
-
-  this.getImages();
-
-  if ( $ ) {
-    // add jQuery Deferred object
-    this.jqDeferred = new $.Deferred();
-  }
-
-  // HACK check async to allow time to bind listeners
-  setTimeout( this.check.bind( this ) );
-}
-
-ImagesLoaded.prototype = Object.create( EvEmitter.prototype );
-
-ImagesLoaded.prototype.options = {};
-
-ImagesLoaded.prototype.getImages = function() {
-  this.images = [];
-
-  // filter & find items if we have an item selector
-  this.elements.forEach( this.addElementImages, this );
-};
-
-/**
- * @param {Node} element
- */
-ImagesLoaded.prototype.addElementImages = function( elem ) {
-  // filter siblings
-  if ( elem.nodeName == 'IMG' ) {
-    this.addImage( elem );
-  }
-  // get background image on element
-  if ( this.options.background === true ) {
-    this.addElementBackgroundImages( elem );
-  }
-
-  // find children
-  // no non-element nodes, #143
-  var nodeType = elem.nodeType;
-  if ( !nodeType || !elementNodeTypes[ nodeType ] ) {
-    return;
-  }
-  var childImgs = elem.querySelectorAll('img');
-  // concat childElems to filterFound array
-  for ( var i=0; i < childImgs.length; i++ ) {
-    var img = childImgs[i];
-    this.addImage( img );
-  }
-
-  // get child background images
-  if ( typeof this.options.background == 'string' ) {
-    var children = elem.querySelectorAll( this.options.background );
-    for ( i=0; i < children.length; i++ ) {
-      var child = children[i];
-      this.addElementBackgroundImages( child );
-    }
-  }
-};
-
-var elementNodeTypes = {
-  1: true,
-  9: true,
-  11: true
-};
-
-ImagesLoaded.prototype.addElementBackgroundImages = function( elem ) {
-  var style = getComputedStyle( elem );
-  if ( !style ) {
-    // Firefox returns null if in a hidden iframe https://bugzil.la/548397
-    return;
-  }
-  // get url inside url("...")
-  var reURL = /url\((['"])?(.*?)\1\)/gi;
-  var matches = reURL.exec( style.backgroundImage );
-  while ( matches !== null ) {
-    var url = matches && matches[2];
-    if ( url ) {
-      this.addBackground( url, elem );
-    }
-    matches = reURL.exec( style.backgroundImage );
-  }
-};
-
-/**
- * @param {Image} img
- */
-ImagesLoaded.prototype.addImage = function( img ) {
-  var loadingImage = new LoadingImage( img );
-  this.images.push( loadingImage );
-};
-
-ImagesLoaded.prototype.addBackground = function( url, elem ) {
-  var background = new Background( url, elem );
-  this.images.push( background );
-};
-
-ImagesLoaded.prototype.check = function() {
-  var _this = this;
-  this.progressedCount = 0;
-  this.hasAnyBroken = false;
-  // complete if no images
-  if ( !this.images.length ) {
-    this.complete();
-    return;
-  }
-
-  function onProgress( image, elem, message ) {
-    // HACK - Chrome triggers event before object properties have changed. #83
-    setTimeout( function() {
-      _this.progress( image, elem, message );
-    });
-  }
-
-  this.images.forEach( function( loadingImage ) {
-    loadingImage.once( 'progress', onProgress );
-    loadingImage.check();
-  });
-};
-
-ImagesLoaded.prototype.progress = function( image, elem, message ) {
-  this.progressedCount++;
-  this.hasAnyBroken = this.hasAnyBroken || !image.isLoaded;
-  // progress event
-  this.emitEvent( 'progress', [ this, image, elem ] );
-  if ( this.jqDeferred && this.jqDeferred.notify ) {
-    this.jqDeferred.notify( this, image );
-  }
-  // check if completed
-  if ( this.progressedCount == this.images.length ) {
-    this.complete();
-  }
-
-  if ( this.options.debug && console ) {
-    console.log( 'progress: ' + message, image, elem );
-  }
-};
-
-ImagesLoaded.prototype.complete = function() {
-  var eventName = this.hasAnyBroken ? 'fail' : 'done';
-  this.isComplete = true;
-  this.emitEvent( eventName, [ this ] );
-  this.emitEvent( 'always', [ this ] );
-  if ( this.jqDeferred ) {
-    var jqMethod = this.hasAnyBroken ? 'reject' : 'resolve';
-    this.jqDeferred[ jqMethod ]( this );
-  }
-};
-
-// --------------------------  -------------------------- //
-
-function LoadingImage( img ) {
-  this.img = img;
-}
-
-LoadingImage.prototype = Object.create( EvEmitter.prototype );
-
-LoadingImage.prototype.check = function() {
-  // If complete is true and browser supports natural sizes,
-  // try to check for image status manually.
-  var isComplete = this.getIsImageComplete();
-  if ( isComplete ) {
-    // report based on naturalWidth
-    this.confirm( this.img.naturalWidth !== 0, 'naturalWidth' );
-    return;
-  }
-
-  // If none of the checks above matched, simulate loading on detached element.
-  this.proxyImage = new Image();
-  this.proxyImage.addEventListener( 'load', this );
-  this.proxyImage.addEventListener( 'error', this );
-  // bind to image as well for Firefox. #191
-  this.img.addEventListener( 'load', this );
-  this.img.addEventListener( 'error', this );
-  this.proxyImage.src = this.img.src;
-};
-
-LoadingImage.prototype.getIsImageComplete = function() {
-  // check for non-zero, non-undefined naturalWidth
-  // fixes Safari+InfiniteScroll+Masonry bug infinite-scroll#671
-  return this.img.complete && this.img.naturalWidth;
-};
-
-LoadingImage.prototype.confirm = function( isLoaded, message ) {
-  this.isLoaded = isLoaded;
-  this.emitEvent( 'progress', [ this, this.img, message ] );
-};
-
-// ----- events ----- //
-
-// trigger specified handler for event type
-LoadingImage.prototype.handleEvent = function( event ) {
-  var method = 'on' + event.type;
-  if ( this[ method ] ) {
-    this[ method ]( event );
-  }
-};
-
-LoadingImage.prototype.onload = function() {
-  this.confirm( true, 'onload' );
-  this.unbindEvents();
-};
-
-LoadingImage.prototype.onerror = function() {
-  this.confirm( false, 'onerror' );
-  this.unbindEvents();
-};
-
-LoadingImage.prototype.unbindEvents = function() {
-  this.proxyImage.removeEventListener( 'load', this );
-  this.proxyImage.removeEventListener( 'error', this );
-  this.img.removeEventListener( 'load', this );
-  this.img.removeEventListener( 'error', this );
-};
-
-// -------------------------- Background -------------------------- //
-
-function Background( url, element ) {
-  this.url = url;
-  this.element = element;
-  this.img = new Image();
-}
-
-// inherit LoadingImage prototype
-Background.prototype = Object.create( LoadingImage.prototype );
-
-Background.prototype.check = function() {
-  this.img.addEventListener( 'load', this );
-  this.img.addEventListener( 'error', this );
-  this.img.src = this.url;
-  // check if image is already complete
-  var isComplete = this.getIsImageComplete();
-  if ( isComplete ) {
-    this.confirm( this.img.naturalWidth !== 0, 'naturalWidth' );
-    this.unbindEvents();
-  }
-};
-
-Background.prototype.unbindEvents = function() {
-  this.img.removeEventListener( 'load', this );
-  this.img.removeEventListener( 'error', this );
-};
-
-Background.prototype.confirm = function( isLoaded, message ) {
-  this.isLoaded = isLoaded;
-  this.emitEvent( 'progress', [ this, this.element, message ] );
-};
-
-// -------------------------- jQuery -------------------------- //
-
-ImagesLoaded.makeJQueryPlugin = function( jQuery ) {
-  jQuery = jQuery || window.jQuery;
-  if ( !jQuery ) {
-    return;
-  }
-  // set local variable
-  $ = jQuery;
-  // $().imagesLoaded()
-  $.fn.imagesLoaded = function( options, callback ) {
-    var instance = new ImagesLoaded( this, options, callback );
-    return instance.jqDeferred.promise( $(this) );
-  };
-};
-// try making plugin
-ImagesLoaded.makeJQueryPlugin();
-
-// --------------------------  -------------------------- //
-
-return ImagesLoaded;
-
-});
-
-/*!
- * Flickity imagesLoaded v2.0.0
- * enables imagesLoaded option for Flickity
- */
-
-/*jshint browser: true, strict: true, undef: true, unused: true */
-
-( function( window, factory ) {
-  // universal module definition
-  /*jshint strict: false */ /*globals define, module, require */
-  if ( typeof define == 'function' && define.amd ) {
-    // AMD
-    define( [
-      'flickity/js/index',
-      'imagesloaded/imagesloaded'
-    ], function( Flickity, imagesLoaded ) {
-      return factory( window, Flickity, imagesLoaded );
-    });
-  } else if ( typeof module == 'object' && module.exports ) {
-    // CommonJS
-    module.exports = factory(
-      window,
-      require('flickity'),
-      require('imagesloaded')
-    );
-  } else {
-    // browser global
-    window.Flickity = factory(
-      window,
-      window.Flickity,
-      window.imagesLoaded
-    );
-  }
-
-}( window, function factory( window, Flickity, imagesLoaded ) {
-'use strict';
-
-Flickity.createMethods.push('_createImagesLoaded');
-
-var proto = Flickity.prototype;
-
-proto._createImagesLoaded = function() {
-  this.on( 'activate', this.imagesLoaded );
-};
-
-proto.imagesLoaded = function() {
-  if ( !this.options.imagesLoaded ) {
-    return;
-  }
-  var _this = this;
-  function onImagesLoadedProgress( instance, image ) {
-    var cell = _this.getParentCell( image.img );
-    _this.cellSizeChange( cell && cell.element );
-    if ( !_this.options.freeScroll ) {
-      _this.positionSliderAtSelected();
-    }
-  }
-  imagesLoaded( this.slider ).on( 'progress', onImagesLoadedProgress );
-};
 
 return Flickity;
 
