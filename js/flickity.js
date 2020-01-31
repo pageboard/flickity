@@ -398,12 +398,12 @@ var cellAlignShorthands = {
     right: 0.5
   },
   left: {
-    left: 1e-10,
-    right: 1 - 1e-10
+    left: 0,
+    right: 1
   },
   right: {
-    right: 1e-10,
-    left: 1 - 1e-10
+    right: 0,
+    left: 1
   }
 };
 
